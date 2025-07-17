@@ -1,0 +1,910 @@
+{
+  "name": "Real Estate AI Assistant - Complete Flow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "webhook/lead-intake",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-lead-intake",
+      "name": "Lead Intake Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [180, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "lead_type",
+              "leftValue": "={{ $json.lead_type }}",
+              "rightValue": "phone_call",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "lead-type-router",
+      "name": "Lead Type Router",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.vapi.ai/call",
+        "authentication": "headerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $secrets.VAPI_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "phoneNumber",
+              "value": "={{ $json.phone_number }}"
+            },
+            {
+              "name": "assistantId",
+              "value": "{{ $secrets.VAPI_ASSISTANT_ID }}"
+            },
+            {
+              "name": "metadata",
+              "value": "={{ JSON.stringify({\n  lead_id: $json.lead_id,\n  lead_source: $json.lead_source,\n  property_interest: $json.property_interest\n}) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "vapi-voice-call",
+      "name": "Vapi Voice Call",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [620, 180]
+    },
+    {
+      "parameters": {
+        "fromEmail": "{{ $secrets.COMPANY_EMAIL }}",
+        "toEmail": "={{ $json.email }}",
+        "subject": "Thank you for your interest in {{ $json.property_interest }}",
+        "text": "",
+        "html": "<!DOCTYPE html>\n<html>\n<head>\n    <style>\n        body { font-family: Arial, sans-serif; }\n        .header { background-color: #2c3e50; color: white; padding: 20px; }\n        .content { padding: 20px; }\n        .cta-button { background-color: #3498db; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; }\n    </style>\n</head>\n<body>\n    <div class=\"header\">\n        <h1>Welcome to [Your Real Estate Agency]</h1>\n    </div>\n    <div class=\"content\">\n        <p>Dear {{ $json.first_name }},</p>\n        <p>Thank you for your interest in {{ $json.property_interest }}. We're excited to help you find your dream property!</p>\n        <p>Based on your inquiry, I've prepared some personalized recommendations that match your criteria.</p>\n        <p><a href=\"{{ $secrets.CALENDLY_LINK }}\" class=\"cta-button\">Schedule a Consultation</a></p>\n        <p>Best regards,<br>Your Real Estate Team</p>\n    </div>\n</body>\n</html>",
+        "options": {}
+      },
+      "id": "email-welcome",
+      "name": "Send Welcome Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [620, 420]
+    },
+    {
+      "parameters": {
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "headerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $secrets.OPENAI_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "gpt-4"
+            },
+            {
+              "name": "messages",
+              "value": "=[\n  {\n    \"role\": \"system\",\n    \"content\": \"You are a real estate AI assistant. Analyze the lead information and determine: 1) Lead intent (buying/selling/renting), 2) Urgency level (hot/warm/cold), 3) Property type preference, 4) Budget range estimation, 5) Best follow-up strategy. Return response as JSON.\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": `Lead Info: Name: {{ $json.first_name }} {{ $json.last_name }}, Email: {{ $json.email }}, Phone: {{ $json.phone_number }}, Interest: {{ $json.property_interest }}, Message: {{ $json.message }}, Source: {{ $json.lead_source }}`\n  }\n]"
+            },
+            {
+              "name": "max_tokens",
+              "value": 500
+            },
+            {
+              "name": "temperature",
+              "value": 0.3
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "openai-lead-analysis",
+      "name": "OpenAI Lead Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [840, 300]
+    },
+    {
+      "parameters": {
+        "url": "{{ $secrets.CRM_API_URL }}/contacts",
+        "authentication": "headerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $secrets.CRM_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "first_name",
+              "value": "={{ $json.first_name }}"
+            },
+            {
+              "name": "last_name",
+              "value": "={{ $json.last_name }}"
+            },
+            {
+              "name": "email",
+              "value": "={{ $json.email }}"
+            },
+            {
+              "name": "phone",
+              "value": "={{ $json.phone_number }}"
+            },
+            {
+              "name": "lead_source",
+              "value": "={{ $json.lead_source }}"
+            },
+            {
+              "name": "property_interest",
+              "value": "={{ $json.property_interest }}"
+            },
+            {
+              "name": "lead_score",
+              "value": "={{ JSON.parse($('OpenAI Lead Analysis').item.json.choices[0].message.content).urgency_level }}"
+            },
+            {
+              "name": "intent",
+              "value": "={{ JSON.parse($('OpenAI Lead Analysis').item.json.choices[0].message.content).intent }}"
+            },
+            {
+              "name": "budget_range",
+              "value": "={{ JSON.parse($('OpenAI Lead Analysis').item.json.choices[0].message.content).budget_range }}"
+            },
+            {
+              "name": "tags",
+              "value": "=ai-processed,{{ $json.lead_source }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "crm-contact-create",
+      "name": "Create CRM Contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1060, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "urgency_check",
+              "leftValue": "={{ JSON.parse($('OpenAI Lead Analysis').item.json.choices[0].message.content).urgency_level }}",
+              "rightValue": "hot",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "urgency-router",
+      "name": "Urgency Router",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1280, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/{{ $secrets.TWILIO_ACCOUNT_SID }}/Messages.json",
+        "authentication": "basicAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "From",
+              "value": "{{ $secrets.TWILIO_PHONE_NUMBER }}"
+            },
+            {
+              "name": "To",
+              "value": "={{ $json.phone_number }}"
+            },
+            {
+              "name": "Body",
+              "value": "Hi {{ $json.first_name }}! Thanks for your interest in {{ $json.property_interest }}. I'm your dedicated real estate agent. I'll be calling you within the next 15 minutes to discuss your requirements. If you prefer to schedule a specific time, click here: {{ $secrets.CALENDLY_LINK }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "twilio-sms-urgent",
+      "name": "Send Urgent SMS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1500, 180]
+    },
+    {
+      "parameters": {
+        "url": "https://api.calendly.com/scheduled_events",
+        "authentication": "headerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $secrets.CALENDLY_API_KEY }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "user",
+              "value": "{{ $secrets.CALENDLY_USER_URI }}"
+            },
+            {
+              "name": "invitee_email",
+              "value": "={{ $json.email }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "calendly-check-booking",
+      "name": "Check Calendly Booking",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1500, 420]
+    },
+    {
+      "parameters": {
+        "unit": "hours",
+        "amount": 2
+      },
+      "id": "wait-2-hours",
+      "name": "Wait 2 Hours",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1720, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "headerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $secrets.OPENAI_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "gpt-4"
+            },
+            {
+              "name": "messages",
+              "value": "=[\n  {\n    \"role\": \"system\",\n    \"content\": \"You are a real estate follow-up specialist. Create a personalized follow-up email based on the lead's profile and previous interactions. Make it engaging, helpful, and include relevant property suggestions.\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": `Create a follow-up email for: {{ $json.first_name }} {{ $json.last_name }}, interested in {{ $json.property_interest }}, intent: {{ JSON.parse($('OpenAI Lead Analysis').item.json.choices[0].message.content).intent }}, budget: {{ JSON.parse($('OpenAI Lead Analysis').item.json.choices[0].message.content).budget_range }}`\n  }\n]"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "openai-followup-email",
+      "name": "Generate Follow-up Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1940, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "{{ $secrets.COMPANY_EMAIL }}",
+        "toEmail": "={{ $json.email }}",
+        "subject": "Personalized Property Recommendations for {{ $json.first_name }}",
+        "text": "",
+        "html": "={{ JSON.parse($('Generate Follow-up Email').item.json.choices[0].message.content) }}",
+        "options": {}
+      },
+      "id": "send-followup-email",
+      "name": "Send Follow-up Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [2160, 300]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "webhook/vapi-callback",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "vapi-callback-webhook",
+      "name": "Vapi Callback Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [180, 600]
+    },
+    {
+      "parameters": {
+        "url": "https://api.elevenlabs.io/v1/text-to-speech/{{ $secrets.ELEVENLABS_VOICE_ID }}",
+        "authentication": "headerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $secrets.ELEVENLABS_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "={{ $json.transcript }}"
+            },
+            {
+              "name": "voice_settings",
+              "value": "{\n  \"stability\": 0.75,\n  \"similarity_boost\": 0.8\n}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "elevenlabs-tts",
+      "name": "ElevenLabs TTS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [400, 600]
+    },
+    {
+      "parameters": {
+        "url": "{{ $secrets.CRM_API_URL }}/contacts/{{ $json.lead_id }}/activities",
+        "authentication": "headerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $secrets.CRM_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "activity_type",
+              "value": "voice_call"
+            },
+            {
+              "name": "duration",
+              "value": "={{ $json.call_duration }}"
+            },
+            {
+              "name": "transcript",
+              "value": "={{ $json.transcript }}"
+            },
+            {
+              "name": "sentiment",
+              "value": "={{ $json.sentiment }}"
+            },
+            {
+              "name": "next_action",
+              "value": "={{ $json.next_action }}"
+            },
+            {
+              "name": "timestamp",
+              "value": "={{ $now }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "crm-activity-log",
+      "name": "Log Call Activity",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [620, 600]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "webhook/email-response",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "email-response-webhook",
+      "name": "Email Response Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [180, 900]
+    },
+    {
+      "parameters": {
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "headerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $secrets.OPENAI_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "gpt-4"
+            },
+            {
+              "name": "messages",
+              "value": "=[\n  {\n    \"role\": \"system\",\n    \"content\": \"You are a real estate email assistant. Analyze the email content and sentiment. Determine if this requires immediate attention, what the customer needs, and suggest the best response strategy. Return as JSON with fields: sentiment, urgency, intent, suggested_response, next_action.\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": `Email from {{ $json.from_email }}: {{ $json.email_body }}`\n  }\n]"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "openai-email-analysis",
+      "name": "Analyze Email Response",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [400, 900]
+    },
+    {
+      "parameters": {
+        "fromEmail": "{{ $secrets.COMPANY_EMAIL }}",
+        "toEmail": "={{ $json.from_email }}",
+        "subject": "Re: {{ $json.subject }}",
+        "text": "",
+        "html": "={{ JSON.parse($('Analyze Email Response').item.json.choices[0].message.content).suggested_response }}",
+        "options": {}
+      },
+      "id": "send-email-response",
+      "name": "Send Email Response",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [620, 900]
+    },
+    {
+      "parameters": {
+        "url": "https://api.google.com/calendar/v3/calendars/primary/events",
+        "authentication": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "summary",
+              "value": "Follow-up call with {{ $json.first_name }} {{ $json.last_name }}"
+            },
+            {
+              "name": "description",
+              "value": "Property interest: {{ $json.property_interest }}\\nLead source: {{ $json.lead_source }}\\nContact: {{ $json.phone_number }}"
+            },
+            {
+              "name": "start",
+              "value": "{\n  \"dateTime\": \"{{ $now.plus({days: 1}).toISO() }}\",\n  \"timeZone\": \"America/New_York\"\n}"
+            },
+            {
+              "name": "end",
+              "value": "{\n  \"dateTime\": \"{{ $now.plus({days: 1, minutes: 30}).toISO() }}\",\n  \"timeZone\": \"America/New_York\"\n}"
+            },
+            {
+              "name": "attendees",
+              "value": "[\n  {\n    \"email\": \"{{ $json.email }}\"\n  }\n]"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "google-calendar-event",
+      "name": "Create Google Calendar Event",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [840, 900]
+    },
+    {
+      "parameters": {
+        "url": "{{ $secrets.ANALYTICS_WEBHOOK_URL }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "event_type",
+              "value": "lead_processed"
+            },
+            {
+              "name": "lead_id",
+              "value": "={{ $json.lead_id }}"
+            },
+            {
+              "name": "lead_source",
+              "value": "={{ $json.lead_source }}"
+            },
+            {
+              "name": "processing_time",
+              "value": "={{ $now }}"
+            },
+            {
+              "name": "ai_analysis",
+              "value": "={{ JSON.parse($('OpenAI Lead Analysis').item.json.choices[0].message.content) }}"
+            },
+            {
+              "name": "actions_taken",
+              "value": "=[\n  \"crm_contact_created\",\n  \"welcome_email_sent\",\n  \"ai_analysis_completed\"\n]"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "analytics-tracking",
+      "name": "Analytics Tracking",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2380, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "basicAuth",
+        "url": "https://api.twilio.com/2010-04-01/Accounts/{{ $secrets.TWILIO_ACCOUNT_SID }}/Messages.json",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "From",
+              "value": "{{ $secrets.TWILIO_PHONE_NUMBER }}"
+            },
+            {
+              "name": "To",
+              "value": "{{ $secrets.AGENT_PHONE_NUMBER }}"
+            },
+            {
+              "name": "Body",
+              "value": "🚨 HOT LEAD ALERT 🚨\\n\\nName: {{ $json.first_name }} {{ $json.last_name }}\\nPhone: {{ $json.phone_number }}\\nInterest: {{ $json.property_interest }}\\nUrgency: {{ JSON.parse($('OpenAI Lead Analysis').item.json.choices[0].message.content).urgency_level }}\\n\\nAction Required: Call within 15 minutes!"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "agent-alert-sms",
+      "name": "Agent Alert SMS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1500, 80]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"success\",\n  \"message\": \"Lead processed successfully\",\n  \"lead_id\": \"{{ $json.lead_id }}\",\n  \"actions_taken\": [\n    \"ai_analysis_completed\",\n    \"crm_contact_created\",\n    \"welcome_email_sent\",\n    \"follow_up_scheduled\"\n  ]\n}"
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2600, 300]
+    }
+  ],
+  "connections": {
+    "Lead Intake Webhook": {
+      "main": [
+        [
+          {
+            "node": "Lead Type Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Type Router": {
+      "main": [
+        [
+          {
+            "node": "Vapi Voice Call",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Welcome Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vapi Voice Call": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Lead Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Welcome Email": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Lead Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Lead Analysis": {
+      "main": [
+        [
+          {
+            "node": "Create CRM Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create CRM Contact": {
+      "main": [
+        [
+          {
+            "node": "Urgency Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Urgency Router": {
+      "main": [
+        [
+          {
+            "node": "Send Urgent SMS",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Agent Alert SMS",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Calendly Booking",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Urgent SMS": {
+      "main": [
+        [
+          {
+            "node": "Wait 2 Hours",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Calendly Booking": {
+      "main": [
+        [
+          {
+            "node": "Wait 2 Hours",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 2 Hours": {
+      "main": [
+        [
+          {
+            "node": "Generate Follow-up Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Follow-up Email": {
+      "main": [
+        [
+          {
+            "node": "Send Follow-up Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Follow-up Email": {
+      "main": [
+        [
+          {
+            "node": "Analytics Tracking",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vapi Callback Webhook": {
+      "main": [
+        [
+          {
+            "node": "ElevenLabs TTS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ElevenLabs TTS": {
+      "main": [
+        [
+          {
+            "node": "Log Call Activity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Response Webhook": {
+      "main": [
+        [
+          {
+            "node": "Analyze Email Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Email Response": {
+      "main": [
+        [
+          {
+            "node": "Send Email Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email Response": {
+      "main": [
+        [
+          {
+            "node": "Create Google Calendar Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analytics Tracking": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "id": "real-estate-ai",
+      "name": "Real Estate AI"
+    }
+  ],
+  "triggerCount": 3,
+  "updatedAt": "2024-01-15T10:30:00.000Z",
+  "versionId": "1.0.0"
+}
